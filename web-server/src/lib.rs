@@ -1,18 +1,25 @@
+mod thread_pool;
+
+use regex::Regex;
 use std::{
     fs,
     io::{BufRead, BufReader, ErrorKind, Write},
     net::{TcpListener, TcpStream},
 };
-
-use regex::Regex;
+use thread_pool::ThreadPool;
 
 pub fn run(address: &str) {
     let listener =
         TcpListener::bind(address).expect(&format!("Unable to bind to address {address}"));
+    let pool = ThreadPool::new(4).expect(&format!(
+        "Unable to spawn threads for underlying thread pool"
+    ));
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
-        handle_connection(stream);
+        pool.execute(|| {
+            handle_connection(stream);
+        });
     }
 }
 
