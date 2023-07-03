@@ -36,19 +36,21 @@ fn handle_connection(mut stream: TcpStream) -> () {
     let (status, response) = handle_request(request);
     stream.write_all(response.as_bytes()).unwrap();
 
-    println!("Sent response status: {:#?}", status);
+    println!("Sent response status: {status}");
 }
 
-fn handle_request(request: Vec<String>) -> (String, String) {
+fn handle_request(request: Vec<String>) -> (usize, String) {
     return match request.first().and_then(|r| decompose_request(&r)) {
-        Some((_, _, ver)) if ver != "HTTP/1.1" => empty_response("505 HTTP Version Not Supported"),
-        Some((method, _, _)) if method != "GET" => empty_response("405 Method Not Allowed"),
+        Some((_, _, ver)) if ver != "1.1" => {
+            (505, empty_response("505 HTTP Version Not Supported"))
+        }
+        Some((method, _, _)) if method != "GET" => (405, empty_response("405 Method Not Allowed")),
         Some((_, route, _)) => match retrieve_page_content(route) {
-            Ok(content) => response_with_content("200 OK", &content),
-            Err(e) if e.kind() == ErrorKind::NotFound => empty_response("404 Not Found"),
-            _ => empty_response("500 Internal Server Error"),
+            Ok(content) => (200, response_with_content("200 OK", &content)),
+            Err(e) if e.kind() == ErrorKind::NotFound => (404, empty_response("404 Not Found")),
+            _ => (500, empty_response("500 Internal Server Error")),
         },
-        _ => empty_response("400 Bad Request"),
+        _ => (400, empty_response("400 Bad Request")),
     };
 }
 
@@ -63,7 +65,7 @@ fn retrieve_page_content(route: &str) -> Result<String, std::io::Error> {
 }
 
 fn decompose_request(request: &str) -> Option<(&str, &str, &str)> {
-    let request_regex = Regex::new(r"^([A-Z]+) (\/.*) (HTTP\/1.1)$").unwrap();
+    let request_regex = Regex::new(r"^([A-Z]+) (\/.*) HTTP\/(\d+.\d+)$").unwrap();
     let matches = request_regex.captures_iter(request).next()?;
     let method = matches.get(1)?.as_str();
     let route = matches.get(2)?.as_str();
@@ -72,17 +74,13 @@ fn decompose_request(request: &str) -> Option<(&str, &str, &str)> {
     Some((method, route, version))
 }
 
-fn empty_response(status: &str) -> (String, String) {
-    let header = format!("HTTP/1.1 {status}");
-    let response = format!("{status}\r\n\r\n");
-    (header, response)
+fn empty_response(status: &str) -> String {
+    format!("HTTP/1.1 {status}\r\n\r\n")
 }
 
-fn response_with_content(status: &str, content: &str) -> (String, String) {
-    let status = format!("HTTP/1.1 {status}");
-    let headers = format!("{status}\r\nContent-Length: {0}", content.len());
-    let response = format!("{headers}\r\n\r\n{content}");
-    (status, response)
+fn response_with_content(status: &str, content: &str) -> String {
+    let headers = format!("HTTP/1.1 {status}\r\nContent-Length: {0}", content.len());
+    format!("{headers}\r\n\r\n{content}")
 }
 
 #[cfg(test)]
