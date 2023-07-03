@@ -88,11 +88,32 @@ mod test {
     use super::*;
 
     #[test]
+    fn handle_request_returns_400_for_malformed_body() {
+        test_handle_request("'; SELECT * FROM users;", 400);
+    }
+
+    #[test]
+    fn handle_request_returns_404_for_nonexistent_page() {
+        test_handle_request("GET /doesntexist HTTP/1.1", 404)
+    }
+
+    #[test]
+    fn handle_request_returns_505_for_incompatible_http_version() {
+        test_handle_request("GET / HTTP/2.0", 505);
+    }
+
+    #[test]
     fn decompose_request_with_custom_route() {
         let request = "GET /test HTTP/1.1";
         let (method, route, version) = decompose_request(request).unwrap();
+
         assert_eq!(method, "GET");
         assert_eq!(route, "/test");
-        assert_eq!(version, "HTTP/1.1");
+        assert_eq!(version, "1.1");
+    }
+
+    fn test_handle_request(request: &str, expected_status_code: usize) {
+        let (status, _) = handle_request(vec![String::from(request)]);
+        assert_eq!(status, expected_status_code);
     }
 }
