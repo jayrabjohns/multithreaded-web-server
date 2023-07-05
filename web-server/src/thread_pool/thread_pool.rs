@@ -1,13 +1,14 @@
 use std::{
+    any::Any,
     io,
     sync::{mpsc, Arc, Mutex},
 };
 
-use super::worker::Worker;
+use super::worker::{self, Worker};
 
 pub struct ThreadPool {
-    _workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    workers: Vec<Worker>,
+    sender: Option<mpsc::Sender<Job>>,
 }
 
 pub type Job = Box<dyn FnOnce() + Send + 'static>;
@@ -30,8 +31,8 @@ impl ThreadPool {
         }
 
         Ok(ThreadPool {
-            _workers: workers,
-            sender,
+            workers,
+            sender: Some(sender),
         })
     }
 
@@ -41,6 +42,18 @@ impl ThreadPool {
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(f);
-        self.sender.send(job).unwrap(); // Should never panic
+        self.sender.as_ref().unwrap().send(job).unwrap(); // Should never panic
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self) {
+        drop(self.sender.take());
+        for worker in &mut self.workers {
+            println!("Dropping worker {}", worker.id);
+            if let Some(handler) = worker.handler.take() {
+                handler.join().unwrap();
+            }
+        }
     }
 }
